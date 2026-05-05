@@ -465,7 +465,9 @@ def atomic_fraction_to_xtilde(
 
 
 def make_free_zero_gradient_points(
+    species,
     independent_components,
+    components=None,
     n_per_face=10,
     dtype=None,
     device=None,
@@ -473,16 +475,20 @@ def make_free_zero_gradient_points(
     random_state=None,
 ):
     """
-    Make synthetic free-gradient constraints on dilute faces.
+    Make synthetic free-gradient constraints for one chemical-potential species.
 
-    For each independent coordinate x_j, this generates points with x_j = eps
-    inside the composition simplex and constrains d mu^ex / d x_j = 0.
+    If `species` is an independent component x_j, this generates points with
+    x_j = eps inside the composition simplex and constrains
+    d mu_species^ex / d x_j = 0.
+
+    If `species` is not an independent component, returns empty tensors because
+    there is no corresponding derivative dimension in this coordinate system.
 
     Returns
     -------
     X_free
-        Tensor with shape (n_per_face * n_independent_components,
-        n_independent_components).
+        Tensor with shape (n_per_face, n_independent_components), or
+        (0, n_independent_components) when species is not independent.
 
     free_grad_dims
         Tensor with shape (len(X_free),), giving the derivative dimension for
@@ -493,6 +499,10 @@ def make_free_zero_gradient_points(
     """
     import torch
 
+    independent_components = list(independent_components)
+    if components is not None and species not in components:
+        raise ValueError(f"{species!r} is not in components={components}")
+
     n_dims = len(independent_components)
     if n_dims < 1:
         raise ValueError("independent_components must contain at least one entry.")
@@ -502,53 +512,54 @@ def make_free_zero_gradient_points(
         raise ValueError("eps must be between 0 and 1.")
 
     dtype = dtype if dtype is not None else torch.get_default_dtype()
+
+    if species not in independent_components:
+        return (
+            torch.empty((0, n_dims), dtype=dtype, device=device),
+            torch.empty((0,), dtype=torch.long, device=device),
+            torch.empty((0,), dtype=dtype, device=device),
+        )
+
+    dim = independent_components.index(species)
     generator = None
     if random_state is not None:
         generator = torch.Generator(device=device)
         generator.manual_seed(int(random_state))
 
-    x_parts = []
-    dim_parts = []
     remaining_total = 1.0 - eps
+    x_free = torch.zeros(n_per_face, n_dims, dtype=dtype, device=device)
+    x_free[:, dim] = eps
 
-    for dim in range(n_dims):
-        x_face = torch.zeros(n_per_face, n_dims, dtype=dtype, device=device)
-        x_face[:, dim] = eps
+    other_dims = [other for other in range(n_dims) if other != dim]
+    if other_dims:
+        if len(other_dims) == 1:
+            values = torch.linspace(
+                0.0,
+                remaining_total,
+                n_per_face,
+                dtype=dtype,
+                device=device,
+            ).reshape(-1, 1)
+        else:
+            raw = torch.rand(
+                n_per_face,
+                len(other_dims) + 1,
+                dtype=dtype,
+                device=device,
+                generator=generator,
+            )
+            weights = -torch.log(torch.clamp(raw, min=1e-12))
+            weights = weights / weights.sum(dim=1, keepdim=True)
+            values = remaining_total * weights[:, :-1]
 
-        other_dims = [other for other in range(n_dims) if other != dim]
-        if other_dims:
-            if len(other_dims) == 1:
-                values = torch.linspace(
-                    0.0,
-                    remaining_total,
-                    n_per_face,
-                    dtype=dtype,
-                    device=device,
-                ).reshape(-1, 1)
-            else:
-                raw = torch.rand(
-                    n_per_face,
-                    len(other_dims) + 1,
-                    dtype=dtype,
-                    device=device,
-                    generator=generator,
-                )
-                weights = -torch.log(torch.clamp(raw, min=1e-12))
-                weights = weights / weights.sum(dim=1, keepdim=True)
-                values = remaining_total * weights[:, :-1]
+        x_free[:, other_dims] = values
 
-            x_face[:, other_dims] = values
-
-        x_parts.append(x_face)
-        dim_parts.append(torch.full(
-            (n_per_face,),
-            dim,
-            dtype=torch.long,
-            device=device,
-        ))
-
-    x_free = torch.cat(x_parts, dim=0)
-    free_grad_dims = torch.cat(dim_parts, dim=0)
+    free_grad_dims = torch.full(
+        (n_per_face,),
+        dim,
+        dtype=torch.long,
+        device=device,
+    )
     g_free = torch.zeros(x_free.shape[0], dtype=dtype, device=device)
     return x_free, free_grad_dims, g_free
 
