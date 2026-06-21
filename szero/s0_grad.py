@@ -295,6 +295,10 @@ def prepare_gp_gradient_data(
     as_torch
         If True, return torch tensors for direct use in GradientGP.fit.
 
+    charges
+        If provided, should be a dict mapping components to their charge. Used to determine the projection matrix when charge neutrality is a constraint.
+        e.g. charges={"Na": 1, "Cl": -1, "O":0}
+
     Returns
     -------
     If species is a string:
