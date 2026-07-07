@@ -121,7 +121,8 @@ def _composition_vector(entry, components):
         raise ValueError(f"Missing composition keys: {missing}")
 
     x = np.asarray(values, dtype=float)
-    if np.any(x <= 0):
+    #if np.any(x <= 0):
+    if np.any(x < 0):
         raise ValueError("All composition entries must be positive.")
     if not np.isclose(np.sum(x), 1.0):
         raise ValueError(f"Compositions must sum to 1. Got {np.sum(x)}.")
