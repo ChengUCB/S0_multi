@@ -9,7 +9,7 @@ with respect to a set of independent atomic fractions.
 The code also provides utilities for checking the statistical consistency of $S^0$ values obtained
 from trajectory splits and for preparing gradient observations for Gaussian process (GP) integration (please refer to [`GPR_grad`](https://github.com/ChengUCB/GPR_grad)).
 
-See [`test.ipynb`](test.ipynb) for a short executable example.
+See the [example usage notebook](test.ipynb) for a short executable example.
 
 ## Installation
 
